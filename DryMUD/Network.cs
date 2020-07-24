@@ -10,7 +10,7 @@ namespace Network
     class Connection
     {
         public const int receive_buffer_size = 1024;
-        public const int send_buffer_size = 4; // @DEV
+        public const int send_buffer_size = 1024;
 
 
         public Socket socket = null;
@@ -69,7 +69,7 @@ namespace Network
             {
                 socket.BeginReceive(client.receive_buffer_data, 0, Connection.receive_buffer_size, 0, new AsyncCallback(ReadCallback), client);
                 // @DEV
-                Send(socket, "This is a lot of text to test the metered output of FlushSendBuffers().");
+                //Send(socket, "This is a lot of text to test the metered output of FlushSendBuffers().");
             }
             catch(SocketException)
             {
@@ -79,6 +79,8 @@ namespace Network
             listener.BeginAccept(new AsyncCallback(AcceptCallback), null);
         }
 
+        // @TODO: figure out what is causing the weird echo behavior.
+        // IDEAS: check if line_terminator_index is at the end of the string. check if content is empty
         public static void ReadCallback(IAsyncResult async_result)
         {
             string content = String.Empty;
@@ -103,7 +105,9 @@ namespace Network
                         client.receive_buffer_string = new StringBuilder(new_receive_buffer_data);
 
                         Console.WriteLine("Command: {0}", command);
-                        Send(socket, command); // @DEV
+
+                        // @DEV
+                        Send(socket, command);
                     }
 
                     socket.BeginReceive(client.receive_buffer_data, 0, Connection.receive_buffer_size, 0, new AsyncCallback(ReadCallback), client);
@@ -119,6 +123,9 @@ namespace Network
         {
             Connection client = socket_to_connection[socket];
             client.send_buffer_string.Append(data);
+
+            // @DEV
+            Console.WriteLine(client.send_buffer_string.ToString());
 
             if (client.send_buffer_string.Length > Connection.send_buffer_size)
             {

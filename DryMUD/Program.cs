@@ -38,7 +38,7 @@ namespace DryMUD
         static void Main(string[] args)
         {
             const int port = 4000;
-            const int tick_flush_network_buffers_ms = 1000;
+            const int tick_flush_network_buffers_ms = 3000;
 
             Console.WriteLine("Starting network handler.");
             Network.ConnectionHandler.Start(port);
