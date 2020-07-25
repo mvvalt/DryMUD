@@ -37,19 +37,27 @@ namespace DryMUD
 
         static void Main(string[] args)
         {
+            // @TODO: Config options should be in a file
             const int port = 4000;
-            const int tick_flush_network_buffers_ms = 3000;
+            const int tick_process_output_buffers_ms = 3000;
+            const int tick_process_input_buffer_ms = 3000;
+            const string data_directory = "../../../data/";
 
             Console.WriteLine("Starting network handler.");
-            Network.ConnectionHandler.Start(port);
+            Network.ConnectionHandler.Start(port, $"{data_directory}greeting.txt");
 
-            Timer timer_flush_network_buffers = new Timer(tick_flush_network_buffers_ms);
+            Timer timer_process_output_buffers = new Timer(tick_process_output_buffers_ms);
+            Timer timer_process_input_buffers = new Timer(tick_process_input_buffer_ms);
 
             while (running)
             {
-                if (timer_flush_network_buffers.CheckTick())
+                if (timer_process_output_buffers.CheckTick())
                 {
-                    Network.ConnectionHandler.FlushSendBuffers();
+                    Network.ConnectionHandler.ProcessOutputBuffers();
+                }
+                if (timer_process_input_buffers.CheckTick())
+                {
+                    Network.ConnectionHandler.ProcessInputBuffers();
                 }
             }
         }

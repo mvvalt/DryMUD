@@ -3,15 +3,19 @@ using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Threading;
 
 namespace Network
 {
+    public enum ConnectionState
+    {
+        NotConnected,
+        Connected
+    }
+
     class Connection
     {
         public const int receive_buffer_size = 1024;
-        public const int send_buffer_size = 1024;
-
+        public const int send_buffer_size = 4 * 1024;
 
         public Socket socket = null;
 
@@ -19,6 +23,9 @@ namespace Network
         public StringBuilder receive_buffer_string = new StringBuilder();
 
         public StringBuilder send_buffer_string = new StringBuilder();
+
+        public long id = -1;
+        public ConnectionState connection_state = ConnectionState.NotConnected;
     }
 
 
@@ -31,15 +38,21 @@ namespace Network
         private static readonly object lock_object = new object();
         private static Dictionary<Socket, Connection> socket_to_connection = new Dictionary<Socket, Connection>();
         private static Socket listener;
+
+        private static long next_connection_id = 0;
+        private static string greeting_message;
         
         public ConnectionHandler()
         {   
         }
 
-        public static void Start(int port)
+        public static void Start(int port, string greeting_path)
         {
+            greeting_message = System.IO.File.ReadAllText(greeting_path);
+
             listener_port = port;
 
+            // @TODO: Test this with a non-local host
             IPHostEntry ip_host_info = Dns.GetHostEntry("localhost"); // Dns.GetHostEntry(Dns.GetHostName());
             IPAddress ip_address = ip_host_info.AddressList[0];
             IPEndPoint local_end_point = new IPEndPoint(ip_address, listener_port);
@@ -53,69 +66,70 @@ namespace Network
 
         public static void AcceptCallback(IAsyncResult async_result)
         {
-            Console.WriteLine("Incoming connection.");
-
-            Socket socket = listener.EndAccept(async_result);
-
-            Connection client = new Connection();
-            client.socket = socket;
-
             lock (lock_object)
             {
-                socket_to_connection.Add(socket, client);
-            }
+                Socket socket = listener.EndAccept(async_result);
 
-            try
-            {
-                socket.BeginReceive(client.receive_buffer_data, 0, Connection.receive_buffer_size, 0, new AsyncCallback(ReadCallback), client);
-                // @DEV
-                //Send(socket, "This is a lot of text to test the metered output of FlushSendBuffers().");
-            }
-            catch(SocketException)
-            {
-                Disconnect(socket);
-            }
-
-            listener.BeginAccept(new AsyncCallback(AcceptCallback), null);
-        }
-
-        // @TODO: figure out what is causing the weird echo behavior.
-        // IDEAS: check if line_terminator_index is at the end of the string. check if content is empty
-        public static void ReadCallback(IAsyncResult async_result)
-        {
-            string content = String.Empty;
-
-            Connection client = (Connection)async_result.AsyncState;
-            Socket socket = client.socket;
-
-            try
-            {
-                int bytes_read = socket.EndReceive(async_result);
-                if (bytes_read > 0)
+                // @TODO: Test this with a non-local host
+                if (socket.RemoteEndPoint is IPEndPoint remote_end_point)
                 {
-                    client.receive_buffer_string.Append(Encoding.ASCII.GetString(client.receive_buffer_data, 0, bytes_read));
+                    Console.WriteLine($"Incoming connection ({next_connection_id}) from {remote_end_point.Address}.");
+                }
+                else
+                {
+                    Console.WriteLine("Incoming connection from [undetermined].");
+                }
 
-                    // Check the input buffer for a line-terminated command
-                    content = client.receive_buffer_string.ToString();
-                    int line_terminator_index = content.IndexOf('\n');
-                    if (line_terminator_index >= 0)
-                    {
-                        string command = content.Substring(0, line_terminator_index);
-                        string new_receive_buffer_data = content.Substring(line_terminator_index + 1);
-                        client.receive_buffer_string = new StringBuilder(new_receive_buffer_data);
+                Connection client = new Connection
+                {
+                    socket = socket,
+                    id = next_connection_id++,
+                    connection_state = ConnectionState.Connected,
+                };
+                
 
-                        Console.WriteLine("Command: {0}", command);
+                socket_to_connection.Add(socket, client);
 
-                        // @DEV
-                        Send(socket, command);
-                    }
+                Send(socket, greeting_message);
 
+                try
+                {
                     socket.BeginReceive(client.receive_buffer_data, 0, Connection.receive_buffer_size, 0, new AsyncCallback(ReadCallback), client);
                 }
+                catch (SocketException)
+                {
+                    Disconnect(socket);
+                }
+
+                listener.BeginAccept(new AsyncCallback(AcceptCallback), null);
             }
-            catch(SocketException)
+        }
+
+        public static void ReadCallback(IAsyncResult async_result)
+        {
+            lock (lock_object)
             {
-                Disconnect(socket);
+                Connection client = (Connection)async_result.AsyncState;
+
+                try
+                {
+                    int bytes_read = client.socket.EndReceive(async_result);
+                    if (bytes_read > 0)
+                    {
+                        client.receive_buffer_string.Append(Encoding.ASCII.GetString(client.receive_buffer_data, 0, bytes_read));
+
+                        if (client.receive_buffer_string.Length >= Connection.receive_buffer_size)
+                        {
+                            Console.WriteLine($"Connection {client.id} flooding the input buffer.");
+                            Disconnect(client.socket);
+                        }
+                    }
+                    client.socket.BeginReceive(client.receive_buffer_data, 0, Connection.receive_buffer_size, 0, new AsyncCallback(ReadCallback), client);
+                }
+                catch (SocketException)
+                {
+                    Disconnect(client.socket);
+                }
             }
         }
 
@@ -124,18 +138,33 @@ namespace Network
             Connection client = socket_to_connection[socket];
             client.send_buffer_string.Append(data);
 
-            // @DEV
-            Console.WriteLine(client.send_buffer_string.ToString());
-
             if (client.send_buffer_string.Length > Connection.send_buffer_size)
             {
                 // @TODO: Send buffer is getting too large, do something about it
             }
         }
 
-        public static void FlushSendBuffers()
+        public static void ProcessInputBuffers()
         {
-            foreach(Connection client in socket_to_connection.Values)
+            foreach (Connection client in socket_to_connection.Values)
+            {
+                string input_buffer_string = client.receive_buffer_string.ToString();
+                int line_terminator_index = input_buffer_string.IndexOf('\n');
+                if (line_terminator_index >= 0)
+                {
+                    string command = input_buffer_string.Substring(0, line_terminator_index);
+                    string new_receive_buffer_string = input_buffer_string.Substring(line_terminator_index + 1);
+                    client.receive_buffer_string = new StringBuilder(new_receive_buffer_string);
+
+                    // @TODO: process the command
+                    Send(client.socket, $"Command: {command}\n");
+                }
+            }
+        }
+
+        public static void ProcessOutputBuffers()
+        {
+            foreach (Connection client in socket_to_connection.Values)
             {
                 if (client.send_buffer_string.Length > 0)
                 {
@@ -162,22 +191,22 @@ namespace Network
 
         private static void SendCallback(IAsyncResult async_result)
         {
-            Socket socket = (Socket)async_result.AsyncState;
+            lock (lock_object)
+            {
+                Socket socket = (Socket)async_result.AsyncState;
 
-            int bytes_sent = socket.EndSend(async_result);
-            Console.WriteLine("Send {0} bytes to client.", bytes_sent);
+                int bytes_sent = socket.EndSend(async_result);
+                Console.WriteLine($"Sent {bytes_sent} bytes to client ({socket_to_connection[socket].id}).");
+            }
         }
 
         public static void Disconnect(Socket socket)
         {
+            Console.WriteLine($"Socket ({socket_to_connection[socket].id}) disconnected.");
+
             // @TODO: go through any game data lists and see if they are controlled by this connection
-
-            lock (lock_object)
-            {
-                socket_to_connection.Remove(socket);
-            }
-
-            Console.WriteLine("Socket disconnected.");
+            socket_to_connection[socket].connection_state = ConnectionState.NotConnected;
+            socket_to_connection.Remove(socket);
 
             socket.Shutdown(SocketShutdown.Both);
             socket.Close();
