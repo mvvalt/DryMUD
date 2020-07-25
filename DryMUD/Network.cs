@@ -9,7 +9,8 @@ namespace Network
     public enum ConnectionState
     {
         NotConnected,
-        Connected
+        Connected,
+        New
     }
 
     class Connection
@@ -24,6 +25,7 @@ namespace Network
 
         public StringBuilder send_buffer_string = new StringBuilder();
 
+
         public long id = -1;
         public ConnectionState connection_state = ConnectionState.NotConnected;
     }
@@ -36,7 +38,7 @@ namespace Network
         private static int listener_port;
 
         private static readonly object lock_object = new object();
-        private static Dictionary<Socket, Connection> socket_to_connection = new Dictionary<Socket, Connection>();
+        private static readonly Dictionary<Socket, Connection> socket_to_connection = new Dictionary<Socket, Connection>();
         private static Socket listener;
 
         private static long next_connection_id = 0;
