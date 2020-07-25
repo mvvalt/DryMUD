@@ -1,4 +1,5 @@
-﻿using System;
+﻿using DryMUD;
+using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
@@ -6,16 +7,9 @@ using System.Text;
 
 namespace Network
 {
-    public enum ConnectionState
-    {
-        NotConnected,
-        Connected,
-        New
-    }
-
     class Connection
     {
-        public const int receive_buffer_size = 1024;
+        public const int receive_buffer_size = 4 * 1024;
         public const int send_buffer_size = 4 * 1024;
 
         public Socket socket = null;
@@ -27,7 +21,7 @@ namespace Network
 
 
         public long id = -1;
-        public ConnectionState connection_state = ConnectionState.NotConnected;
+        public Session session = null;
     }
 
 
@@ -85,9 +79,9 @@ namespace Network
                 Connection client = new Connection
                 {
                     socket = socket,
-                    id = next_connection_id++,
-                    connection_state = ConnectionState.Connected,
+                    id = next_connection_id++
                 };
+                client.session = new Session(client);
                 
 
                 socket_to_connection.Add(socket, client);
@@ -155,11 +149,13 @@ namespace Network
                 if (line_terminator_index >= 0)
                 {
                     string command = input_buffer_string.Substring(0, line_terminator_index);
+                    command = command.Replace("\r", string.Empty);
+                    command = command.Replace("\n", string.Empty);
+
                     string new_receive_buffer_string = input_buffer_string.Substring(line_terminator_index + 1);
                     client.receive_buffer_string = new StringBuilder(new_receive_buffer_string);
 
-                    // @TODO: process the command
-                    Send(client.socket, $"Command: {command}\n");
+                    client.session.ProcessInput(command);
                 }
             }
         }
@@ -207,7 +203,6 @@ namespace Network
             Console.WriteLine($"Socket ({socket_to_connection[socket].id}) disconnected.");
 
             // @TODO: go through any game data lists and see if they are controlled by this connection
-            socket_to_connection[socket].connection_state = ConnectionState.NotConnected;
             socket_to_connection.Remove(socket);
 
             socket.Shutdown(SocketShutdown.Both);
