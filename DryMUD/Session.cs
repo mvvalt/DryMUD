@@ -140,6 +140,12 @@ namespace DryMUD
                             return;
                         }
 
+                        if (Config.character_name_censor.Contains(input))
+                        {
+                            Send("That name is not allowed. Enter a name for your character: ");
+                            return;
+                        }
+
                         character_name = input;
                         state = State.New_CharacterPassword;
                         Send("Enter a password for your character: ");
@@ -160,6 +166,8 @@ namespace DryMUD
                             Send("The password does not match. ");
                             Send("Enter a password for your character: ");
                         }
+
+                        // @TODO: more character loading stuff
                     } break;
             }
         }

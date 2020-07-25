@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net;
 using System.Text;
 
@@ -13,9 +14,17 @@ namespace DryMUD
         public const int tick_process_output_buffers_ms = 16;
         public const int tick_process_input_buffer_ms = 16;
 
+        public static List<string> character_name_censor = new List<string>();
+
         public static void Load()
         {
-            // @TODO
+            StreamReader file = new StreamReader($"{data_directory}character_name_censor.txt");
+            string name;
+            while ((name = file.ReadLine()) != null)
+            {
+                character_name_censor.Add(name);
+            }
+            file.Close();
         }
     }
 }
