@@ -1,32 +1,26 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq.Expressions;
-using System.Runtime.CompilerServices;
-using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
-using System.Xml;
 
 namespace DryMUD
 {
-    class PlayerData
+    class PlayerSaveData
     {
-        public string name { get; set; }
+        public string Name { get; set; }
 
-        public string password { get; set; }
+        public string Password { get; set; }
 
-        public int in_room_id { get; set; }
+        public int InRoom { get; set; }
     }
 
 
     class Player
     {
         public Session session = null;
-        public PlayerData player_data;
+        public PlayerSaveData save_data = new PlayerSaveData();
 
 
-        public void Load(string character_name, Session session_handle)
+        public bool Load(string character_name, Session session_handle)
         {
             session = session_handle;
 
@@ -35,16 +29,18 @@ namespace DryMUD
             try
             {
                 string json_string = File.ReadAllText($"{Config.data_directory}players/{character_name}.txt");
-                player_data = JsonSerializer.Deserialize<PlayerData>(json_string);
-                session.Send("Loaded!\n");
+                save_data = JsonSerializer.Deserialize<PlayerSaveData>(json_string);
+
+                session.Send("Welcome back!\n");
             }
             catch (Exception)
             {
                 Log.Error($"Unable to load character {character_name}.");
-                session_handle.Disconnect("Unable to load character.");
+                return false;
             }
 
             Console.WriteLine($"Player {character_name} loaded!");
+            return true;
         }
 
         public void Save()
@@ -56,12 +52,12 @@ namespace DryMUD
                     WriteIndented = true
                 };
 
-                string json_string = JsonSerializer.Serialize(player_data);
-                File.WriteAllText($"{Config.data_directory}players/{player_data.name}.txt", json_string);
+                string json_string = JsonSerializer.Serialize(save_data, jso);
+                File.WriteAllText($"{Config.data_directory}players/{save_data.Name}.txt", json_string);
             }
             catch (Exception)
             {
-                Log.Error($"Unable to save character {player_data.name}.");
+                Log.Error($"Unable to save character {save_data.Name}.");
             }
         }
     }

@@ -128,19 +128,20 @@ namespace DryMUD
                 case State.Password:
                     {
                         player = new Player();
-                        player.player_data = new PlayerData();
-                        player.Load(character_name, this);
+                        if (!player.Load(character_name, this))
+                        {
+                            Disconnect("Unable to load character.");
+                            return;
+                        }
 
-                        if (!VerifyPasswordHash(player.player_data.password, input))
+                        if (!VerifyPasswordHash(player.save_data.Password, input))
                         {
                             Send("The password does not match. Enter your password: ");
-                            player.player_data = null;
                             player = null;
                             return;
                         }
 
                         // @TODO: passwords match, finish loading
-
                     } break;
 
 
@@ -152,7 +153,7 @@ namespace DryMUD
                             return;
                         }
 
-                        if (Config.character_name_censor.Contains(input))
+                        if (Config.player_name_censor.Contains(input))
                         {
                             Send("That name is not allowed. Enter a name for your character: ");
                             return;
@@ -181,12 +182,9 @@ namespace DryMUD
 
                         // @TODO: more character loading stuff
                         player = new Player();
-                        player.player_data = new PlayerData
-                        {
-                            name = character_name,
-                            password = password_hash,
-                            in_room_id = 42
-                        };
+                        player.save_data.Name = character_name;
+                        player.save_data.Password = password_hash;
+                        player.save_data.InRoom = Config.new_player_start_room;
                         player.Save();
 
                     } break;
