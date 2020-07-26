@@ -21,11 +21,15 @@ namespace DryMUD
             New_CharacterPasswordAgain,
 
             // Playing
+            Playing
         }
         private State state = State.CharacterName;
 
-        private string character_name;
-        private string password_hash;
+        // We need to save these values temporarily
+        string character_name;
+        string password_hash;
+
+        Player player;
 
         private readonly Network.Connection network_connection = null;
 
@@ -78,6 +82,12 @@ namespace DryMUD
             Network.ConnectionHandler.Send(network_connection.socket, message);
         }
 
+        public void Disconnect(string message)
+        {
+            Network.ConnectionHandler.Send(network_connection.socket, message);
+            Network.ConnectionHandler.Disconnect(network_connection.socket);
+        }
+
         public void ProcessInput(string input)
         {
             switch (state)
@@ -103,7 +113,7 @@ namespace DryMUD
                                 return;
                             }
 
-                            if (!File.Exists($"{Config.data_directory}players/{input}.plr"))
+                            if (!File.Exists($"{Config.data_directory}players/{input}.txt"))
                             {
                                 Send($"No character by that name exists. {enter_name}");
                                 return;
@@ -117,24 +127,26 @@ namespace DryMUD
 
                 case State.Password:
                     {
-                        StreamReader file = new StreamReader($"{Config.data_directory}players/{character_name}.plr");
-                        string saved_password_hash = file.ReadLine();
-                        file.Close();
+                        player = new Player();
+                        player.player_data = new PlayerData();
+                        player.Load(character_name, this);
 
-                        if (!VerifyPasswordHash(saved_password_hash, input))
+                        if (!VerifyPasswordHash(player.player_data.password, input))
                         {
                             Send("The password does not match. Enter your password: ");
+                            player.player_data = null;
+                            player = null;
                             return;
                         }
 
-                        // @TODO: passwords match, load the character
+                        // @TODO: passwords match, finish loading
 
                     } break;
 
 
                 case State.New_CharacterName:
                     {
-                        if (File.Exists($"{Config.data_directory}players/{input}.plr"))
+                        if (File.Exists($"{Config.data_directory}players/{input}.txt"))
                         {
                             Send("That name has already been chosen. Enter a name for your character: ");
                             return;
@@ -168,6 +180,15 @@ namespace DryMUD
                         }
 
                         // @TODO: more character loading stuff
+                        player = new Player();
+                        player.player_data = new PlayerData
+                        {
+                            name = character_name,
+                            password = password_hash,
+                            in_room_id = 42
+                        };
+                        player.Save();
+
                     } break;
             }
         }
